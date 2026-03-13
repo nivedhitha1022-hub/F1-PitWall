@@ -126,7 +126,7 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             vals = sess_plan[sess_plan["Plan"] == plan]["Engagement Score"]
             fig3.add_trace(go.Violin(
                 y=vals, name=plan,
-                fillcolor=color + "40",
+                fillcolor="40",
                 line_color=color,
                 meanline_visible=True,
                 box_visible=True,
