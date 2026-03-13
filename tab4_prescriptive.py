@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from scipy import stats
 from theme import (
-    base_layout, section_label, insight_box, rec_box, warn_box,
+    base_layout, section_label, insight_box, rec_box, warn_box, hex_to_rgba,
     F1_RED, F1_WHITE, F1_SILVER, F1_GREY, F1_DGREY, F1_GOLD,
     ACCENT_TEAL, ACCENT_GREEN, ACCENT_AMBER,
     PLAN_COLORS, SEGMENT_COLORS, RISK_COLORS,
@@ -202,7 +202,7 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             x=months, y=[net_mrr * m for m in months],
             name="Cumulative Benefit", mode="lines+markers",
             line=dict(color=ACCENT_GREEN, width=2.5),
-            fill="tozeroy", fillcolor=ACCENT_GREEN + "15",
+            fill="tozeroy", fillcolor=hex_to_rgba(ACCENT_GREEN, 0.08),
         ))
         fig_roi.add_trace(go.Scatter(
             x=months, y=[cost * 0.3 * m for m in months],

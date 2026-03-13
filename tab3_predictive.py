@@ -8,7 +8,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from theme import (
-    base_layout, section_label, insight_box, warn_box,
+    base_layout, section_label, insight_box, warn_box, hex_to_rgba,
     F1_RED, F1_WHITE, F1_SILVER, F1_GREY, F1_DGREY, F1_GOLD,
     ACCENT_TEAL, ACCENT_GREEN, ACCENT_AMBER,
     PLAN_COLORS, RISK_COLORS, SEGMENT_COLORS,
@@ -161,7 +161,7 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             vals = active[active["Plan"] == plan]["churn_prob"]
             fig5.add_trace(go.Violin(
                 y=vals, name=plan,
-                fillcolor=color + "40", line_color=color,
+                fillcolor=hex_to_rgba(color, 0.25), line_color=color,
                 meanline_visible=True, box_visible=True,
                 hoverinfo="y+name",
             ))

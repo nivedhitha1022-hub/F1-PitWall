@@ -207,6 +207,13 @@ hr { border-color: #1E1E1E !important; margin: 1.4rem 0 !important; }
 """
 
 
+def hex_to_rgba(hex_color: str, alpha: float = 0.25) -> str:
+    """Convert a #RRGGBB hex colour to an rgba() string safe for Plotly fillcolor."""
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha})"
+
+
 def section_label(text: str) -> str:
     return f'<div class="section-label">{text}</div>'
 
