@@ -17,11 +17,13 @@ from theme import (
 
 def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
     st.markdown("## Diagnostic — *Why Are Subscribers Churning?*")
-    st.markdown("Drill into engagement drivers, regional patterns, content behaviour, "
-                "churn reasons, and variable correlation structure.")
+    st.markdown(
+        "Drill into engagement drivers, regional patterns, content behaviour, "
+        "churn reasons, and variable correlation structure."
+    )
     st.markdown("---")
 
-    # Pre-join sessions with subscriber churn status for reuse
+    # Pre-join sessions with subscriber info
     sess_s = sess.merge(
         subs[["Subscriber Id", "Plan", "Region", "churn_flag",
               "Churned", "Monthly Price Usd", "Churn Reason"]],
@@ -29,18 +31,21 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
     )
     sess_s["Status"] = sess_s["churn_flag"].map({0: "Active", 1: "Churned"})
 
-    # ── Row 1: Engagement vs churn  |  Session duration vs churn ───────────────
+    # ── Row 1 ─────────────────────────────────────────────────────────────────
     col1, col2 = st.columns(2)
 
     with col1:
         st.markdown(section_label("ENGAGEMENT SCORE — ACTIVE vs CHURNED"), unsafe_allow_html=True)
         fig1 = go.Figure()
         for label, color in CHURN_COLORS.items():
-            vals = sess_s[sess_s["Status"] == label]["Engagement Score"]
+            vals = sess_s[sess_s["Status"] == label]["Engagement Score"].dropna()
             fig1.add_trace(go.Violin(
-                y=vals, name=label,
-                fillcolor=hex_to_rgba(color, 0.25), line_color=color,
-                meanline_visible=True, box_visible=True,
+                y=vals,
+                name=label,
+                fillcolor=hex_to_rgba(color, 0.25),
+                line_color=color,
+                meanline_visible=True,
+                box_visible=True,
                 hoverinfo="y+name",
             ))
         lo1 = base_layout("Engagement Score: Active vs Churned", height=360)
@@ -52,10 +57,13 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         st.markdown(section_label("SESSION DURATION — ACTIVE vs CHURNED"), unsafe_allow_html=True)
         fig2 = go.Figure()
         for label, color in CHURN_COLORS.items():
-            vals = sess_s[sess_s["Status"] == label]["Session Duration Min"]
+            vals = sess_s[sess_s["Status"] == label]["Session Duration Min"].dropna()
             fig2.add_trace(go.Box(
-                y=vals, name=label,
-                fillcolor=hex_to_rgba(color, 0.25), line_color=color,
+                y=vals,
+                name=label,
+                fillcolor=hex_to_rgba(color, 0.25),
+                line_color=color,
+                boxmean="sd",
                 marker=dict(color=color, size=3),
                 hoverinfo="y+name",
             ))
@@ -64,7 +72,7 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         fig2.update_layout(**lo2)
         st.plotly_chart(fig2, use_container_width=True)
 
-    # ── Row 2: Region vs churn  |  Content type vs engagement ──────────────────
+    # ── Row 2 ─────────────────────────────────────────────────────────────────
     st.markdown("---")
     col3, col4 = st.columns(2)
 
@@ -72,17 +80,18 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         st.markdown(section_label("CHURN RATE BY REGION"), unsafe_allow_html=True)
         reg = (
             subs.groupby("Region")
-            .agg(churn_rate=("churn_flag","mean"),
-                 total=("Subscriber Id","count"),
-                 churned=("churn_flag","sum"))
+            .agg(churn_rate=("churn_flag", "mean"),
+                 total=("Subscriber Id", "count"),
+                 churned=("churn_flag", "sum"))
             .reset_index()
             .sort_values("churn_rate", ascending=True)
         )
         fig3 = go.Figure(go.Bar(
-            y=reg["Region"], x=reg["churn_rate"] * 100,
+            y=reg["Region"],
+            x=reg["churn_rate"] * 100,
             orientation="h",
             marker=dict(
-                color=reg["churn_rate"],
+                color=reg["churn_rate"].tolist(),
                 colorscale=[[0, ACCENT_GREEN], [0.5, ACCENT_AMBER], [1, F1_RED]],
             ),
             text=[f"{v*100:.1f}%  ({c}/{t})"
@@ -93,7 +102,7 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         ))
         lo3 = base_layout("Churn Rate by Region", height=340)
         lo3["xaxis"]["title"] = "Churn Rate (%)"
-        lo3["xaxis"]["range"] = [0, reg["churn_rate"].max() * 145]
+        lo3["xaxis"]["range"] = [0, float(reg["churn_rate"].max()) * 145]
         lo3["margin"]["r"] = 60
         fig3.update_layout(**lo3)
         st.plotly_chart(fig3, use_container_width=True)
@@ -102,17 +111,18 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         st.markdown(section_label("CONTENT TYPE vs AVG ENGAGEMENT"), unsafe_allow_html=True)
         ct_eng = (
             sess.groupby("Content Type")
-            .agg(avg_eng=("Engagement Score","mean"),
-                 avg_dur=("Session Duration Min","mean"),
-                 sessions=("Engagement Score","count"))
+            .agg(avg_eng=("Engagement Score", "mean"),
+                 avg_dur=("Session Duration Min", "mean"),
+                 sessions=("Engagement Score", "count"))
             .reset_index()
             .sort_values("avg_eng", ascending=True)
         )
         fig4 = go.Figure(go.Bar(
-            y=ct_eng["Content Type"], x=ct_eng["avg_eng"],
+            y=ct_eng["Content Type"],
+            x=ct_eng["avg_eng"],
             orientation="h",
             marker=dict(
-                color=ct_eng["avg_eng"],
+                color=ct_eng["avg_eng"].tolist(),
                 colorscale=[[0, F1_RED], [0.5, ACCENT_AMBER], [1, ACCENT_GREEN]],
                 showscale=True,
                 colorbar=dict(title="Avg Score", tickfont=dict(color=F1_SILVER), len=0.8),
@@ -129,12 +139,12 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         ))
         lo4 = base_layout("Content Type vs Avg Engagement Score", height=340)
         lo4["xaxis"]["title"] = "Avg Engagement Score"
-        lo4["xaxis"]["range"] = [0, ct_eng["avg_eng"].max() * 1.28]
+        lo4["xaxis"]["range"] = [0, float(ct_eng["avg_eng"].max()) * 1.28]
         lo4["margin"]["r"] = 60
         fig4.update_layout(**lo4)
         st.plotly_chart(fig4, use_container_width=True)
 
-    # ── Row 3: Churn reason treemap  |  Region × Plan heatmap ──────────────────
+    # ── Row 3 ─────────────────────────────────────────────────────────────────
     st.markdown("---")
     col5, col6 = st.columns(2)
 
@@ -154,9 +164,7 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         fig5.update_traces(
             textinfo="label+value+percent root",
             textfont=dict(color=F1_WHITE, size=13),
-            hovertemplate=(
-                "<b>%{label}</b><br>Churned: %{value}<br>%{percentRoot:.1%}<extra></extra>"
-            ),
+            hovertemplate="<b>%{label}</b><br>Churned: %{value}<br>%{percentRoot:.1%}<extra></extra>",
         )
         fig5.update_coloraxes(showscale=False)
         fig5.update_layout(**base_layout("Why Did Subscribers Cancel?", height=340))
@@ -179,7 +187,8 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             x=pivot.columns.tolist(),
             y=pivot.index.tolist(),
             colorscale=[[0, ACCENT_GREEN], [0.5, ACCENT_AMBER], [1, F1_RED]],
-            zmin=0, zmax=55,
+            zmin=0,
+            zmax=55,
             text=[[f"{v:.1f}%" for v in row] for row in pivot.values * 100],
             texttemplate="%{text}",
             textfont=dict(size=12, color=F1_WHITE),
@@ -190,13 +199,15 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         fig6.update_layout(**base_layout("Churn Rate: Region × Plan", height=340))
         st.plotly_chart(fig6, use_container_width=True)
 
-    # ── Row 4: Scatter engagement × duration  |  Day-of-week engagement ────────
+    # ── Row 4 ─────────────────────────────────────────────────────────────────
     st.markdown("---")
     col7, col8 = st.columns(2)
 
     with col7:
-        st.markdown(section_label("ENGAGEMENT × SESSION DURATION  (COLOURED BY CHURN)"),
-                    unsafe_allow_html=True)
+        st.markdown(
+            section_label("ENGAGEMENT × SESSION DURATION  (COLOURED BY CHURN)"),
+            unsafe_allow_html=True,
+        )
         samp = sess_s.sample(min(2000, len(sess_s)), random_state=42)
         fig7 = px.scatter(
             samp,
@@ -218,7 +229,7 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
 
     with col8:
         st.markdown(section_label("AVG ENGAGEMENT SCORE BY DAY OF WEEK"), unsafe_allow_html=True)
-        day_order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+        day_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         day_eng = (
             sess.groupby("Session Weekday")["Engagement Score"]
             .agg(avg="mean", sessions="count")
@@ -229,13 +240,13 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             x=day_eng["Session Weekday"],
             y=day_eng["avg"],
             marker=dict(
-                color=day_eng["avg"],
+                color=day_eng["avg"].tolist(),
                 colorscale=[[0, F1_RED], [0.5, ACCENT_AMBER], [1, ACCENT_GREEN]],
             ),
             text=[f"{v:.1f}" for v in day_eng["avg"]],
             textposition="outside",
             textfont=dict(color=F1_WHITE, size=11),
-            customdata=day_eng["sessions"],
+            customdata=day_eng["sessions"].tolist(),
             hovertemplate=(
                 "<b>%{x}</b><br>Avg Engagement: %{y:.1f}<br>"
                 "Sessions: %{customdata:,}<extra></extra>"
@@ -243,36 +254,37 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         ))
         lo8 = base_layout("Avg Engagement Score by Day of Week", height=360)
         lo8["yaxis"]["title"] = "Avg Engagement Score"
-        lo8["yaxis"]["range"] = [54, day_eng["avg"].max() * 1.08]
+        lo8["yaxis"]["range"] = [54, float(day_eng["avg"].max()) * 1.08]
         fig8.update_layout(**lo8)
         st.plotly_chart(fig8, use_container_width=True)
 
     # ── Correlation Heatmap ────────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown(section_label("CORRELATION HEATMAP — KEY SUBSCRIBER VARIABLES"),
-                unsafe_allow_html=True)
-
+    st.markdown(
+        section_label("CORRELATION HEATMAP — KEY SUBSCRIBER VARIABLES"),
+        unsafe_allow_html=True,
+    )
     sub_sess_agg = (
         sess.groupby("Subscriber Id")
-        .agg(avg_eng=("Engagement Score","mean"),
-             avg_dur=("Session Duration Min","mean"),
-             total_sess=("Engagement Score","count"))
+        .agg(avg_eng=("Engagement Score", "mean"),
+             avg_dur=("Session Duration Min", "mean"),
+             total_sess=("Engagement Score", "count"))
         .reset_index()
     )
     corr_raw = subs.merge(sub_sess_agg, on="Subscriber Id", how="left")
-    for c in ["avg_eng","avg_dur","total_sess"]:
+    for c in ["avg_eng", "avg_dur", "total_sess"]:
         corr_raw[c] = corr_raw[c].fillna(0)
 
     corr_map = {
-        "churn_flag":       "Churn",
+        "churn_flag":        "Churn",
         "Monthly Price Usd": "Price",
-        "Tenure Months":    "Tenure",
-        "Nps Score":        "NPS",
-        "Renewal Count":    "Renewals",
-        "avg_eng":          "Avg Engagement",
-        "avg_dur":          "Avg Duration",
-        "total_sess":       "Total Sessions",
-        "Age":              "Age",
+        "Tenure Months":     "Tenure",
+        "Nps Score":         "NPS",
+        "Renewal Count":     "Renewals",
+        "avg_eng":           "Avg Engagement",
+        "avg_dur":           "Avg Duration",
+        "total_sess":        "Total Sessions",
+        "Age":               "Age",
     }
     corr_df  = corr_raw[list(corr_map.keys())].rename(columns=corr_map)
     corr_mat = corr_df.corr().round(3)
@@ -282,7 +294,8 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         x=corr_mat.columns.tolist(),
         y=corr_mat.index.tolist(),
         colorscale=[[0, F1_RED], [0.5, F1_GREY], [1, ACCENT_GREEN]],
-        zmin=-1, zmax=1,
+        zmin=-1,
+        zmax=1,
         text=corr_mat.values.round(2),
         texttemplate="%{text}",
         textfont=dict(size=11, color=F1_WHITE),
@@ -297,11 +310,11 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
     st.markdown("---")
     st.markdown(section_label("KEY DIAGNOSTIC INSIGHTS"), unsafe_allow_html=True)
 
-    r_eng_churn   = corr_mat.loc["Churn", "Avg Engagement"]
-    top_reason    = (subs[subs["Churned"]=="Yes"]["Churn Reason"]
-                     .value_counts().idxmax())
-    worst_region  = subs.groupby("Region")["churn_flag"].mean().idxmax()
-    best_content  = ct_eng.sort_values("avg_eng").iloc[-1]["Content Type"]
+    r_eng_churn  = corr_mat.loc["Churn", "Avg Engagement"]
+    top_reason   = (subs[subs["Churned"] == "Yes"]["Churn Reason"]
+                    .value_counts().idxmax())
+    worst_region = subs.groupby("Region")["churn_flag"].mean().idxmax()
+    best_content = ct_eng.sort_values("avg_eng").iloc[-1]["Content Type"]
 
     i1, i2, i3 = st.columns(3)
     with i1:

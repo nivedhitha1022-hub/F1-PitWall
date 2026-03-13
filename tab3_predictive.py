@@ -17,11 +17,9 @@ from model_utils import engineer_features, train_churn_model, get_model_metrics,
 
 
 @st.cache_data(show_spinner=False)
-def _run_pipeline(
-    subs: pd.DataFrame, sess: pd.DataFrame
-) -> tuple:
-    df = engineer_features(subs, sess)
-    out = train_churn_model(df)
+def _run_pipeline(subs: pd.DataFrame, sess: pd.DataFrame) -> tuple:
+    df      = engineer_features(subs, sess)
+    out     = train_churn_model(df)
     clf, X_tr, X_te, y_tr, y_te, y_pred, y_prob, imp_df, df_sc = out
     metrics = get_model_metrics(y_te, y_pred, y_prob)
     df_sc   = segment_customers(df_sc)
@@ -30,8 +28,10 @@ def _run_pipeline(
 
 def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
     st.markdown("## Predictive — *Who Will Churn Next?*")
-    st.markdown("Random Forest churn classifier · feature importance · "
-                "risk scoring · KMeans behavioural segmentation.")
+    st.markdown(
+        "Random Forest churn classifier · feature importance · "
+        "risk scoring · KMeans behavioural segmentation."
+    )
     st.markdown("---")
 
     with st.spinner("🏎  Training churn model on real subscriber data…"):
@@ -46,19 +46,18 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
     m5.metric("ROC-AUC",   f"{metrics['auc']:.3f}", "Target ≥ 0.75")
     st.markdown("---")
 
-    # ── Feature importance  |  ROC curve ─────────────────────────────────────
+    # ── Row 1: Feature importance  |  ROC curve ───────────────────────────────
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown(section_label("FEATURE IMPORTANCE — WHAT DRIVES CHURN?"),
-                    unsafe_allow_html=True)
-        med = imp_df["importance"].median()
+        st.markdown(section_label("FEATURE IMPORTANCE — WHAT DRIVES CHURN?"), unsafe_allow_html=True)
+        med = float(imp_df["importance"].median())
         fig1 = go.Figure(go.Bar(
-            y=imp_df["feature"], x=imp_df["importance"],
+            y=imp_df["feature"],
+            x=imp_df["importance"],
             orientation="h",
             marker=dict(
-                color=[F1_RED if v > med else F1_SILVER
-                       for v in imp_df["importance"]],
+                color=[F1_RED if v > med else F1_SILVER for v in imp_df["importance"]],
                 line=dict(color=F1_DGREY, width=0.5),
             ),
             text=[f"{v:.3f}" for v in imp_df["importance"]],
@@ -76,7 +75,8 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         st.markdown(section_label("ROC CURVE — CHURN CLASSIFIER"), unsafe_allow_html=True)
         fig2 = go.Figure()
         fig2.add_trace(go.Scatter(
-            x=metrics["fpr"], y=metrics["tpr"],
+            x=metrics["fpr"],
+            y=metrics["tpr"],
             mode="lines",
             name=f"RF Model  (AUC = {metrics['auc']:.3f})",
             line=dict(color=F1_RED, width=3),
@@ -84,7 +84,8 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             fillcolor="rgba(232,0,45,0.10)",
         ))
         fig2.add_trace(go.Scatter(
-            x=[0, 1], y=[0, 1],
+            x=[0, 1],
+            y=[0, 1],
             mode="lines",
             name="Random Baseline",
             line=dict(color=F1_SILVER, width=1.5, dash="dash"),
@@ -95,7 +96,7 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         fig2.update_layout(**lo2)
         st.plotly_chart(fig2, use_container_width=True)
 
-    # ── Confusion matrix  |  Churn risk distribution ──────────────────────────
+    # ── Row 2: Confusion matrix  |  Risk distribution ─────────────────────────
     st.markdown("---")
     col3, col4 = st.columns(2)
 
@@ -120,8 +121,10 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         st.plotly_chart(fig3, use_container_width=True)
 
     with col4:
-        st.markdown(section_label("CHURN RISK DISTRIBUTION — ACTIVE SUBSCRIBERS"),
-                    unsafe_allow_html=True)
+        st.markdown(
+            section_label("CHURN RISK DISTRIBUTION — ACTIVE SUBSCRIBERS"),
+            unsafe_allow_html=True,
+        )
         active = df[df["churn_flag"] == 0].copy()
         active["risk_label"] = pd.cut(
             active["churn_prob"],
@@ -134,7 +137,7 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             values=rc.values.tolist(),
             hole=0.52,
             marker=dict(
-                colors=[RISK_COLORS[l] for l in rc.index],
+                colors=[RISK_COLORS.get(str(l), F1_SILVER) for l in rc.index],
                 line=dict(color=F1_DGREY, width=2),
             ),
             textinfo="label+percent+value",
@@ -149,24 +152,29 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         )
         st.plotly_chart(fig4, use_container_width=True)
 
-    # ── Churn probability by plan  |  by NPS score ────────────────────────────
+    # ── Row 3: Churn prob by plan  |  by NPS ──────────────────────────────────
     st.markdown("---")
     col5, col6 = st.columns(2)
 
     with col5:
-        st.markdown(section_label("CHURN PROBABILITY DISTRIBUTION — BY PLAN"),
-                    unsafe_allow_html=True)
+        st.markdown(
+            section_label("CHURN PROBABILITY DISTRIBUTION — BY PLAN"),
+            unsafe_allow_html=True,
+        )
         fig5 = go.Figure()
         for plan, color in PLAN_COLORS.items():
-            vals = active[active["Plan"] == plan]["churn_prob"]
+            vals = active[active["Plan"] == plan]["churn_prob"].dropna()
             fig5.add_trace(go.Violin(
-                y=vals, name=plan,
-                fillcolor=hex_to_rgba(color, 0.25), line_color=color,
-                meanline_visible=True, box_visible=True,
+                y=vals,
+                name=plan,
+                fillcolor=hex_to_rgba(color, 0.25),
+                line_color=color,
+                meanline_visible=True,
+                box_visible=True,
                 hoverinfo="y+name",
             ))
         lo5 = base_layout("Predicted Churn Probability by Plan", height=360)
-        lo5["yaxis"]["title"] = "Predicted Churn Probability"
+        lo5["yaxis"]["title"]      = "Predicted Churn Probability"
         lo5["yaxis"]["tickformat"] = ".0%"
         fig5.update_layout(**lo5)
         st.plotly_chart(fig5, use_container_width=True)
@@ -175,37 +183,38 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         st.markdown(section_label("CHURN PROBABILITY vs NPS SCORE"), unsafe_allow_html=True)
         nps_churn = (
             active.groupby("Nps Score")["churn_prob"]
-            .mean().reset_index()
+            .mean()
+            .reset_index()
         )
         fig6 = go.Figure(go.Scatter(
             x=nps_churn["Nps Score"],
             y=nps_churn["churn_prob"],
             mode="lines+markers",
             line=dict(color=F1_RED, width=2.5),
-            marker=dict(color=F1_RED, size=9,
-                        line=dict(color=F1_WHITE, width=1.5)),
+            marker=dict(color=F1_RED, size=9, line=dict(color=F1_WHITE, width=1.5)),
             fill="tozeroy",
             fillcolor="rgba(232,0,45,0.08)",
             hovertemplate="NPS %{x}<br>Avg Churn Prob: %{y:.1%}<extra></extra>",
         ))
         lo6 = base_layout("Avg Predicted Churn Probability by NPS Score", height=360)
-        lo6["xaxis"]["title"] = "NPS Score (0–10)"
-        lo6["yaxis"]["title"] = "Avg Predicted Churn Probability"
+        lo6["xaxis"]["title"]      = "NPS Score (0–10)"
+        lo6["yaxis"]["title"]      = "Avg Predicted Churn Probability"
         lo6["yaxis"]["tickformat"] = ".0%"
         fig6.update_layout(**lo6)
         st.plotly_chart(fig6, use_container_width=True)
 
     # ── High-risk watchlist ────────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown(section_label("HIGH-RISK WATCHLIST — TOP 30 ACTIVE SUBSCRIBERS"),
-                unsafe_allow_html=True)
-    st.markdown("Active subscribers with predicted churn probability ≥ 45%, "
-                "ranked by Priority Score = churn probability × monthly price.")
-
+    st.markdown(
+        section_label("HIGH-RISK WATCHLIST — TOP 30 ACTIVE SUBSCRIBERS"),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "Active subscribers with predicted churn probability ≥ 45%, "
+        "ranked by Priority Score = churn probability × monthly price."
+    )
     watchlist = active[active["churn_prob"] >= 0.45].copy()
-    watchlist["priority_score"] = (
-        watchlist["churn_prob"] * watchlist["Monthly Price Usd"]
-    ).round(2)
+    watchlist["priority_score"] = (watchlist["churn_prob"] * watchlist["Monthly Price Usd"]).round(2)
     watchlist = watchlist.sort_values("priority_score", ascending=False).head(30)
 
     disp = watchlist[[
@@ -224,31 +233,34 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
 
     # ── KMeans segmentation ────────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown(section_label("KMEANS CUSTOMER SEGMENTATION — 4 CLUSTERS"),
-                unsafe_allow_html=True)
-    st.markdown("##### Segmented on: avg engagement, avg duration, total sessions, "
-                "tenure months, mobile %, high-engagement session %")
-
+    st.markdown(section_label("KMEANS CUSTOMER SEGMENTATION — 4 CLUSTERS"), unsafe_allow_html=True)
+    st.markdown(
+        "##### Segmented on: avg engagement, avg duration, total sessions, "
+        "tenure months, mobile %, high-engagement session %"
+    )
     col7, col8 = st.columns([1, 2])
 
+    seg_sum = (
+        df.groupby("segment_label")
+        .agg(count=("Subscriber Id", "count"),
+             avg_eng=("avg_engagement", "mean"),
+             avg_dur=("avg_duration", "mean"),
+             churn_rate=("churn_flag", "mean"))
+        .reset_index()
+        .sort_values("avg_eng", ascending=False)
+    )
+
     with col7:
-        seg_sum = (
-            df.groupby("segment_label")
-            .agg(count=("Subscriber Id","count"),
-                 avg_eng=("avg_engagement","mean"),
-                 avg_dur=("avg_duration","mean"),
-                 churn_rate=("churn_flag","mean"))
-            .reset_index()
-            .sort_values("avg_eng", ascending=False)
-        )
         fig7 = go.Figure(go.Bar(
-            x=seg_sum["count"], y=seg_sum["segment_label"],
+            x=seg_sum["count"],
+            y=seg_sum["segment_label"],
             orientation="h",
             marker=dict(
                 color=[SEGMENT_COLORS.get(s, F1_SILVER) for s in seg_sum["segment_label"]],
                 line=dict(color=F1_DGREY, width=1),
             ),
-            text=seg_sum["count"], textposition="outside",
+            text=seg_sum["count"].tolist(),
+            textposition="outside",
             textfont=dict(color=F1_WHITE),
             customdata=seg_sum[["avg_eng", "churn_rate"]].values,
             hovertemplate=(
@@ -267,13 +279,18 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         samp = df.sample(min(700, len(df)), random_state=42)
         fig8 = px.scatter(
             samp,
-            x="avg_duration", y="avg_engagement",
+            x="avg_duration",
+            y="avg_engagement",
             color="segment_label",
             color_discrete_map=SEGMENT_COLORS,
-            size="Tenure Months", size_max=18, opacity=0.72,
+            size="Tenure Months",
+            size_max=18,
+            opacity=0.72,
             hover_data={
-                "Subscriber Id": True, "Plan": True,
-                "churn_prob": ":.1%", "Tenure Months": True,
+                "Subscriber Id": True,
+                "Plan": True,
+                "churn_prob": ":.1%",
+                "Tenure Months": True,
             },
             labels={
                 "avg_duration":   "Avg Session Duration (min)",
@@ -285,16 +302,17 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             "Segment Scatter — Engagement vs Duration  (bubble size = Tenure)", height=360))
         st.plotly_chart(fig8, use_container_width=True)
 
-    # ── Segment churn + engagement comparison ─────────────────────────────────
+    # ── Segment comparisons ────────────────────────────────────────────────────
     st.markdown("---")
     col9, col10 = st.columns(2)
 
     with col9:
         st.markdown(section_label("CHURN RATE BY SEGMENT"), unsafe_allow_html=True)
         fig9 = go.Figure(go.Bar(
-            x=seg_sum["segment_label"], y=seg_sum["churn_rate"] * 100,
+            x=seg_sum["segment_label"],
+            y=seg_sum["churn_rate"] * 100,
             marker=dict(
-                color=[SEGMENT_COLORS.get(s) for s in seg_sum["segment_label"]],
+                color=[SEGMENT_COLORS.get(s, F1_SILVER) for s in seg_sum["segment_label"]],
                 line=dict(color=F1_DGREY, width=1),
             ),
             text=[f"{v*100:.1f}%" for v in seg_sum["churn_rate"]],
@@ -304,16 +322,17 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         ))
         lo9 = base_layout("Churn Rate by KMeans Segment", height=320)
         lo9["yaxis"]["title"] = "Churn Rate (%)"
-        lo9["yaxis"]["range"] = [0, seg_sum["churn_rate"].max() * 140]
+        lo9["yaxis"]["range"] = [0, float(seg_sum["churn_rate"].max()) * 140]
         fig9.update_layout(**lo9)
         st.plotly_chart(fig9, use_container_width=True)
 
     with col10:
         st.markdown(section_label("AVG ENGAGEMENT SCORE BY SEGMENT"), unsafe_allow_html=True)
         fig10 = go.Figure(go.Bar(
-            x=seg_sum["segment_label"], y=seg_sum["avg_eng"],
+            x=seg_sum["segment_label"],
+            y=seg_sum["avg_eng"],
             marker=dict(
-                color=[SEGMENT_COLORS.get(s) for s in seg_sum["segment_label"]],
+                color=[SEGMENT_COLORS.get(s, F1_SILVER) for s in seg_sum["segment_label"]],
                 line=dict(color=F1_DGREY, width=1),
             ),
             text=[f"{v:.1f}" for v in seg_sum["avg_eng"]],
@@ -323,7 +342,7 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         ))
         lo10 = base_layout("Avg Engagement Score by Segment", height=320)
         lo10["yaxis"]["title"] = "Avg Engagement Score"
-        lo10["yaxis"]["range"] = [0, seg_sum["avg_eng"].max() * 1.22]
+        lo10["yaxis"]["range"] = [0, float(seg_sum["avg_eng"].max()) * 1.22]
         fig10.update_layout(**lo10)
         st.plotly_chart(fig10, use_container_width=True)
 
@@ -331,17 +350,16 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
     st.markdown("---")
     st.markdown(section_label("KEY PREDICTIVE INSIGHTS"), unsafe_allow_html=True)
 
-    top_feat     = imp_df.iloc[-1]["feature"]
-    high_risk_n  = len(active[active["churn_prob"] >= 0.66])
-    dormant_n    = len(df[df["segment_label"] == "Dormant"])
+    top_feat    = imp_df.iloc[-1]["feature"]
+    high_risk_n = len(active[active["churn_prob"] >= 0.66])
+    dormant_n   = len(df[df["segment_label"] == "Dormant"])
 
     i1, i2, i3 = st.columns(3)
     with i1:
         st.markdown(insight_box(
             f"🎯 <b>'{top_feat}'</b> is the single strongest churn predictor. "
             f"Interventions targeting this variable will generate the highest incremental "
-            f"improvement in retention across all plan tiers — prioritise it in any "
-            f"engagement-improvement sprint."
+            f"improvement in retention across all plan tiers."
         ), unsafe_allow_html=True)
     with i2:
         st.markdown(insight_box(
@@ -353,7 +371,5 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         st.markdown(warn_box(
             f"😴 <b>{dormant_n} subscribers</b> are in the Dormant segment — "
             f"low engagement, short sessions, high churn probability. "
-            f"This group needs a re-engagement campaign before probability "
-            f"crosses 70%, at which point historical data suggests interventions "
-            f"yield minimal incremental lift."
+            f"This group needs a re-engagement campaign before probability crosses 70%."
         ), unsafe_allow_html=True)

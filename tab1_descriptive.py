@@ -16,36 +16,37 @@ from theme import (
 
 def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
     st.markdown("## Descriptive — *Who Are Our Subscribers?*")
-    st.markdown("Platform-wide snapshot: subscriber base health, plan distribution, "
-                "engagement patterns, device behaviour, and revenue trajectory.")
+    st.markdown(
+        "Platform-wide snapshot: subscriber base health, plan distribution, "
+        "engagement patterns, device behaviour, and revenue trajectory."
+    )
     st.markdown("---")
 
     # ── KPI Row ───────────────────────────────────────────────────────────────
-    total_subs   = len(subs)
-    active_subs  = (subs["Churned"] == "No").sum()
-    churn_rate   = subs["churn_flag"].mean() * 100
-    avg_eng      = sess["Engagement Score"].mean()
-    avg_dur      = sess["Session Duration Min"].mean()
-    latest_mrr   = mrr.groupby("Month")["Mrr Usd"].sum().iloc[-1]
+    total_subs  = len(subs)
+    active_subs = (subs["Churned"] == "No").sum()
+    churn_rate  = subs["churn_flag"].mean() * 100
+    avg_eng     = sess["Engagement Score"].mean()
+    avg_dur     = sess["Session Duration Min"].mean()
+    latest_mrr  = mrr.groupby("Month")["Mrr Usd"].sum().iloc[-1]
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("Total Subscribers",   f"{total_subs:,}")
-    c2.metric("Active Subscribers",  f"{active_subs:,}",  f"{active_subs/total_subs*100:.1f}% of base")
-    c3.metric("Platform Churn Rate", f"{churn_rate:.1f}%")
-    c4.metric("Avg Engagement Score",f"{avg_eng:.1f} / 100")
-    c5.metric("Avg Session Duration",f"{avg_dur:.1f} min")
-    c6.metric("Latest Month MRR",    f"${latest_mrr:,.0f}")
-
+    c1.metric("Total Subscribers",    f"{total_subs:,}")
+    c2.metric("Active Subscribers",   f"{active_subs:,}", f"{active_subs/total_subs*100:.1f}% of base")
+    c3.metric("Platform Churn Rate",  f"{churn_rate:.1f}%")
+    c4.metric("Avg Engagement Score", f"{avg_eng:.1f} / 100")
+    c5.metric("Avg Session Duration", f"{avg_dur:.1f} min")
+    c6.metric("Latest Month MRR",     f"${latest_mrr:,.0f}")
     st.markdown("---")
 
-    # ── Row 1: Retention by plan  |  Churn by pricing tier ────────────────────
+    # ── Row 1 ─────────────────────────────────────────────────────────────────
     col1, col2 = st.columns(2)
 
     with col1:
         st.markdown(section_label("RETENTION RATE BY PLAN TIER"), unsafe_allow_html=True)
         plan_stats = (
             subs.groupby("Plan")
-            .agg(total=("Subscriber Id","count"), churned=("churn_flag","sum"))
+            .agg(total=("Subscriber Id", "count"), churned=("churn_flag", "sum"))
             .reset_index()
         )
         plan_stats["retention_pct"] = (1 - plan_stats["churned"] / plan_stats["total"]) * 100
@@ -57,19 +58,17 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             x=plan_stats["Plan"],
             y=plan_stats["retention_pct"],
             marker=dict(
-                color=[PLAN_COLORS[p] for p in plan_stats["Plan"]],
+                color=[PLAN_COLORS.get(p, F1_SILVER) for p in plan_stats["Plan"]],
                 line=dict(color=F1_DGREY, width=1),
             ),
             text=[f"{v:.1f}%" for v in plan_stats["retention_pct"]],
             textposition="outside",
-            textfont=dict(color=F1_WHITE, size=13, family="Arial Black"),
+            textfont=dict(color=F1_WHITE, size=13),
             customdata=plan_stats[["churned", "total", "churn_pct"]].values,
             hovertemplate=(
-                "<b>%{x}</b><br>"
-                "Retention: %{y:.1f}%<br>"
+                "<b>%{x}</b><br>Retention: %{y:.1f}%<br>"
                 "Churned: %{customdata[0]} / %{customdata[1]}<br>"
-                "Churn rate: %{customdata[2]:.1f}%"
-                "<extra></extra>"
+                "Churn rate: %{customdata[2]:.1f}%<extra></extra>"
             ),
         ))
         lo1 = base_layout("Subscriber Retention by Plan Tier", height=340)
@@ -82,18 +81,18 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         st.markdown(section_label("CHURN RATE BY PRICING TIER"), unsafe_allow_html=True)
         price_churn = (
             subs.groupby("Plan")
-            .agg(churn_rate=("churn_flag","mean"),
-                 price=("Monthly Price Usd","first"),
-                 count=("Subscriber Id","count"))
+            .agg(churn_rate=("churn_flag", "mean"),
+                 price=("Monthly Price Usd", "first"),
+                 count=("Subscriber Id", "count"))
             .reset_index()
             .sort_values("price")
         )
         fig2 = go.Figure(go.Bar(
-            x=[f"${p:.2f}/mo\n{pl}" for p, pl in
+            x=[f"${p:.2f}/mo  {pl}" for p, pl in
                zip(price_churn["price"], price_churn["Plan"])],
             y=price_churn["churn_rate"] * 100,
             marker=dict(
-                color=price_churn["churn_rate"],
+                color=price_churn["churn_rate"].tolist(),
                 colorscale=[[0, ACCENT_GREEN], [0.5, ACCENT_AMBER], [1, F1_RED]],
                 showscale=True,
                 colorbar=dict(title="Churn Rate", tickformat=".0%",
@@ -102,7 +101,7 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             text=[f"{v*100:.1f}%" for v in price_churn["churn_rate"]],
             textposition="outside",
             textfont=dict(color=F1_WHITE, size=13),
-            customdata=price_churn["count"],
+            customdata=price_churn["count"].tolist(),
             hovertemplate=(
                 "<b>%{x}</b><br>Churn: %{y:.1f}%<br>"
                 "Subscribers: %{customdata}<extra></extra>"
@@ -110,11 +109,11 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         ))
         lo2 = base_layout("Churn Rate by Pricing Tier", height=340)
         lo2["yaxis"]["title"] = "Churn Rate (%)"
-        lo2["yaxis"]["range"] = [0, price_churn["churn_rate"].max() * 145]
+        lo2["yaxis"]["range"] = [0, float(price_churn["churn_rate"].max()) * 145]
         fig2.update_layout(**lo2)
         st.plotly_chart(fig2, use_container_width=True)
 
-    # ── Row 2: Engagement distribution  |  Device usage ────────────────────────
+    # ── Row 2 ─────────────────────────────────────────────────────────────────
     st.markdown("---")
     col3, col4 = st.columns(2)
 
@@ -123,9 +122,10 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         sess_plan = sess.merge(subs[["Subscriber Id", "Plan"]], on="Subscriber Id", how="left")
         fig3 = go.Figure()
         for plan, color in PLAN_COLORS.items():
-            vals = sess_plan[sess_plan["Plan"] == plan]["Engagement Score"]
+            vals = sess_plan[sess_plan["Plan"] == plan]["Engagement Score"].dropna()
             fig3.add_trace(go.Violin(
-                y=vals, name=plan,
+                y=vals,
+                name=plan,
                 fillcolor=hex_to_rgba(color, 0.25),
                 line_color=color,
                 meanline_visible=True,
@@ -154,12 +154,10 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         lo4["yaxis"]["title"] = "Sessions"
         lo4["xaxis"]["title"] = "Device Type"
         fig4.update_layout(**lo4)
-        fig4.update_traces(
-            hovertemplate="<b>%{x}</b><br>%{y:,} sessions<extra></extra>"
-        )
+        fig4.update_traces(hovertemplate="<b>%{x}</b><br>%{y:,} sessions<extra></extra>")
         st.plotly_chart(fig4, use_container_width=True)
 
-    # ── Row 3: Content type volume  |  Acquisition channel ─────────────────────
+    # ── Row 3 ─────────────────────────────────────────────────────────────────
     st.markdown("---")
     col5, col6 = st.columns(2)
 
@@ -168,13 +166,15 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         ct = sess["Content Type"].value_counts().reset_index()
         ct.columns = ["content", "count"]
         fig5 = go.Figure(go.Bar(
-            y=ct["content"], x=ct["count"],
+            y=ct["content"],
+            x=ct["count"],
             orientation="h",
             marker=dict(
-                color=ct["count"],
+                color=ct["count"].tolist(),
                 colorscale=[[0, F1_GREY], [0.5, ACCENT_TEAL], [1, F1_RED]],
             ),
-            text=ct["count"], textposition="outside",
+            text=ct["count"].tolist(),
+            textposition="outside",
             textfont=dict(color=F1_WHITE, size=11),
             hovertemplate="<b>%{y}</b><br>Sessions: %{x:,}<extra></extra>",
         ))
@@ -188,8 +188,8 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         st.markdown(section_label("ACQUISITION CHANNEL — VOLUME vs CHURN"), unsafe_allow_html=True)
         ch_stats = (
             subs.groupby("Acquisition Channel")
-            .agg(count=("Subscriber Id","count"),
-                 churn_rate=("churn_flag","mean"))
+            .agg(count=("Subscriber Id", "count"),
+                 churn_rate=("churn_flag", "mean"))
             .reset_index()
         )
         fig6 = go.Figure()
@@ -198,7 +198,7 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             x=ch_stats["Acquisition Channel"],
             y=ch_stats["count"],
             marker=dict(
-                color=[CHANNEL_COLORS[c] for c in ch_stats["Acquisition Channel"]],
+                color=[CHANNEL_COLORS.get(c, ACCENT_TEAL) for c in ch_stats["Acquisition Channel"]],
                 opacity=0.85,
             ),
             hovertemplate="<b>%{x}</b><br>Subscribers: %{y}<extra></extra>",
@@ -210,22 +210,24 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             mode="lines+markers",
             yaxis="y2",
             line=dict(color=F1_RED, width=2.5),
-            marker=dict(size=9, color=F1_RED,
-                        line=dict(color=F1_WHITE, width=1.5)),
+            marker=dict(size=9, color=F1_RED, line=dict(color=F1_WHITE, width=1.5)),
             hovertemplate="Churn: %{y:.1f}%<extra></extra>",
         ))
         lo6 = base_layout("Acquisition Channel: Volume vs Churn Rate", height=320)
-        lo6["yaxis"]  = dict(**lo6.get("yaxis", {}), title="Subscribers",
-                             gridcolor="#252525")
+        lo6["yaxis"]["title"]     = "Subscribers"
+        lo6["yaxis"]["gridcolor"] = "#252525"
         lo6["yaxis2"] = dict(
-            title="Churn %", overlaying="y", side="right",
-            tickfont=dict(color=F1_RED), gridcolor="rgba(0,0,0,0)",
+            title="Churn %",
+            overlaying="y",
+            side="right",
+            tickfont=dict(color=F1_RED),
+            gridcolor="rgba(0,0,0,0)",
         )
         lo6["legend"] = dict(bgcolor="rgba(0,0,0,0)", x=0.01, y=0.99)
         fig6.update_layout(**lo6)
         st.plotly_chart(fig6, use_container_width=True)
 
-    # ── Row 4: MRR trend  |  NPS distribution ──────────────────────────────────
+    # ── Row 4 ─────────────────────────────────────────────────────────────────
     st.markdown("---")
     col7, col8 = st.columns(2)
 
@@ -241,8 +243,10 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             if plan not in mrr_pivot.columns:
                 continue
             fig7.add_trace(go.Scatter(
-                x=mrr_pivot.index, y=mrr_pivot[plan],
-                name=plan, mode="lines",
+                x=mrr_pivot.index,
+                y=mrr_pivot[plan],
+                name=plan,
+                mode="lines",
                 fill="tonexty",
                 line=dict(color=color, width=2.5),
                 fillcolor=hex_to_rgba(color, 0.09),
@@ -262,7 +266,8 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         )
         fig8 = px.bar(
             nps_plan, x="Plan", y="count", color="Nps Category",
-            color_discrete_map=NPS_COLORS, barmode="stack",
+            color_discrete_map=NPS_COLORS,
+            barmode="stack",
             category_orders={
                 "Plan": ["Pit Lane", "Podium", "Paddock Club"],
                 "Nps Category": ["Detractor", "Passive", "Promoter"],

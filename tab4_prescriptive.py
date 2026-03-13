@@ -19,21 +19,23 @@ from model_utils import engineer_features, train_churn_model, segment_customers
 
 @st.cache_data(show_spinner=False)
 def _get_scored(subs: pd.DataFrame, sess: pd.DataFrame) -> pd.DataFrame:
-    df = engineer_features(subs, sess)
-    _, _, _, _, _, _, _, _, df = train_churn_model(df)
-    df = segment_customers(df)
+    df  = engineer_features(subs, sess)
+    out = train_churn_model(df)
+    _, _, _, _, _, _, _, _, df = out
+    df  = segment_customers(df)
 
     rng = np.random.default_rng(42)
     n   = len(df)
 
-    # Simulated uplift scores
     df["treatment_response"] = np.clip(
         df["churn_prob"] * 0.65
         + (df["avg_engagement"] / 100) * 0.35
-        + rng.normal(0, 0.07, n), 0, 1
+        + rng.normal(0, 0.07, n),
+        0, 1,
     )
     df["control_response"] = np.clip(
-        1 - df["churn_prob"] + rng.normal(0, 0.05, n), 0, 1
+        1 - df["churn_prob"] + rng.normal(0, 0.05, n),
+        0, 1,
     )
 
     def _uplift(row):
@@ -59,8 +61,10 @@ _UPLIFT_COLORS = {
 
 def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
     st.markdown("## Prescriptive — *What Should We Do?*")
-    st.markdown("Uplift modelling, A/B test simulator, "
-                "CLV forecasting, and data-backed strategic recommendations.")
+    st.markdown(
+        "Uplift modelling, A/B test simulator, "
+        "CLV forecasting, and data-backed strategic recommendations."
+    )
     st.markdown("---")
 
     with st.spinner("Building prescriptive models…"):
@@ -70,24 +74,28 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
     persuadables = active[active["uplift_segment"] == "Persuadable"]
 
     # ── Uplift 4-quadrant ─────────────────────────────────────────────────────
-    st.markdown(section_label("UPLIFT MODEL — WHO RESPONDS TO RETENTION OFFERS?"),
-                unsafe_allow_html=True)
-    st.markdown("Simulates which active subscribers will respond to a discount/offer "
-                "vs those who stay or leave regardless of intervention.")
-
+    st.markdown(section_label("UPLIFT MODEL — WHO RESPONDS TO RETENTION OFFERS?"), unsafe_allow_html=True)
+    st.markdown(
+        "Simulates which active subscribers will respond to a discount/offer "
+        "vs those who stay or leave regardless of intervention."
+    )
     col1, col2 = st.columns([2, 1])
 
     with col1:
         samp = active.sample(min(500, len(active)), random_state=42)
         fig1 = px.scatter(
             samp,
-            x="control_response", y="treatment_response",
+            x="control_response",
+            y="treatment_response",
             color="uplift_segment",
             color_discrete_map=_UPLIFT_COLORS,
-            size="Monthly Price Usd", size_max=16,
+            size="Monthly Price Usd",
+            size_max=16,
             hover_data={
-                "Subscriber Id": True, "Plan": True,
-                "churn_prob": ":.1%", "Monthly Price Usd": True,
+                "Subscriber Id": True,
+                "Plan": True,
+                "churn_prob": ":.1%",
+                "Monthly Price Usd": True,
             },
             labels={
                 "control_response":   "Control Response (no offer)",
@@ -113,56 +121,59 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
     with col2:
         seg_c = active["uplift_segment"].value_counts()
         fig2 = go.Figure(go.Bar(
-            x=seg_c.values, y=seg_c.index, orientation="h",
-            marker=dict(color=[_UPLIFT_COLORS.get(s) for s in seg_c.index]),
-            text=seg_c.values, textposition="outside",
+            x=seg_c.values.tolist(),
+            y=seg_c.index.tolist(),
+            orientation="h",
+            marker=dict(color=[_UPLIFT_COLORS.get(s, F1_SILVER) for s in seg_c.index]),
+            text=seg_c.values.tolist(),
+            textposition="outside",
             textfont=dict(color=F1_WHITE),
             hovertemplate="<b>%{y}</b><br>Subscribers: %{x}<extra></extra>",
         ))
         fig2.update_layout(**base_layout("Segment Counts", height=240))
         st.plotly_chart(fig2, use_container_width=True)
 
+        avg_price_p = float(persuadables["Monthly Price Usd"].mean()) if len(persuadables) > 0 else 0
         st.markdown(insight_box(
             f"🎯 <b>{len(persuadables)} Persuadables</b> identified — the only group where a "
             f"discount or offer generates incremental lift. "
-            f"Avg plan price: <b>${persuadables['Monthly Price Usd'].mean():.2f}/mo</b>."
+            f"Avg plan price: <b>${avg_price_p:.2f}/mo</b>."
         ), unsafe_allow_html=True)
 
     # ── A/B test simulator ────────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown(section_label("A/B TEST SIMULATOR — DESIGN YOUR RETENTION CAMPAIGN"),
-                unsafe_allow_html=True)
+    st.markdown(section_label("A/B TEST SIMULATOR — DESIGN YOUR RETENTION CAMPAIGN"), unsafe_allow_html=True)
 
     s1, s2, s3, s4 = st.columns(4)
-    discount    = s1.slider("Discount Offered (%)", 5, 50, 20, 5)
-    target      = s2.selectbox(
+    discount   = s1.slider("Discount Offered (%)", 5, 50, 20, 5)
+    target     = s2.selectbox(
         "Target Group",
         ["Persuadables Only", "All At-Risk", "Pit Lane", "Podium", "Paddock Club"],
     )
-    n_per_arm   = s3.slider("Sample Size / Arm", 30, 300, 100, 10)
-    base_churn  = s4.slider("Baseline Churn Rate (%)", 10, 60, 32, 1)
+    n_per_arm  = s3.slider("Sample Size / Arm", 30, 300, 100, 10)
+    base_churn = s4.slider("Baseline Churn Rate (%)", 10, 60, 32, 1)
 
     _effect = {
         "Persuadables Only": 0.16, "All At-Risk": 0.08,
         "Pit Lane": 0.10, "Podium": 0.07, "Paddock Club": 0.05,
     }
-    effect      = _effect.get(target, 0.08) * (discount / 20)
-    treat_cr    = max(0.02, (base_churn / 100) - effect)
-    ctrl_cr     = base_churn / 100
+    effect    = _effect.get(target, 0.08) * (discount / 20)
+    treat_cr  = max(0.02, (base_churn / 100) - effect)
+    ctrl_cr   = base_churn / 100
 
-    rng2 = np.random.default_rng(99)
+    rng2     = np.random.default_rng(99)
     ctrl_ch  = int(rng2.binomial(n_per_arm, ctrl_cr))
     treat_ch = int(rng2.binomial(n_per_arm, treat_cr))
     cont     = np.array([[ctrl_ch,  n_per_arm - ctrl_ch],
                           [treat_ch, n_per_arm - treat_ch]])
     _, p_val, _, _ = stats.chi2_contingency(cont)
-    lift       = (ctrl_cr - treat_cr) / ctrl_cr * 100
-    avg_price  = {"Persuadables Only": 15, "All At-Risk": 12,
-                  "Pit Lane": 9.99, "Podium": 19.99, "Paddock Club": 39.99}.get(target, 12)
-    saved      = max(0, ctrl_ch - treat_ch)
-    mrr_saved  = saved * avg_price
-    cost       = n_per_arm * avg_price * (discount / 100) * 0.5
-    net_mrr    = mrr_saved - cost
+    lift      = (ctrl_cr - treat_cr) / ctrl_cr * 100
+    avg_price = {"Persuadables Only": 15, "All At-Risk": 12,
+                 "Pit Lane": 9.99, "Podium": 19.99, "Paddock Club": 39.99}.get(target, 12)
+    saved     = max(0, ctrl_ch - treat_ch)
+    mrr_saved = saved * avg_price
+    cost      = n_per_arm * avg_price * (discount / 100) * 0.5
+    net_mrr   = mrr_saved - cost
 
     r1, r2, r3, r4, r5 = st.columns(5)
     r1.metric("Baseline Churn",    f"{ctrl_cr:.1%}")
@@ -196,17 +207,22 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         st.plotly_chart(fig_ab, use_container_width=True)
 
     with ab2:
-        months  = list(range(1, 7))
+        months = list(range(1, 7))
         fig_roi = go.Figure()
         fig_roi.add_trace(go.Scatter(
-            x=months, y=[net_mrr * m for m in months],
-            name="Cumulative Benefit", mode="lines+markers",
+            x=months,
+            y=[net_mrr * m for m in months],
+            name="Cumulative Benefit",
+            mode="lines+markers",
             line=dict(color=ACCENT_GREEN, width=2.5),
-            fill="tozeroy", fillcolor=hex_to_rgba(ACCENT_GREEN, 0.08),
+            fill="tozeroy",
+            fillcolor=hex_to_rgba(ACCENT_GREEN, 0.08),
         ))
         fig_roi.add_trace(go.Scatter(
-            x=months, y=[cost * 0.3 * m for m in months],
-            name="Cumulative Cost", mode="lines+markers",
+            x=months,
+            y=[cost * 0.3 * m for m in months],
+            name="Cumulative Cost",
+            mode="lines+markers",
             line=dict(color=F1_RED, width=2),
         ))
         lo_roi = base_layout("Projected 6-Month Campaign ROI", height=300)
@@ -217,13 +233,13 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
 
     # ── Priority intervention table ────────────────────────────────────────────
     st.markdown("---")
-    st.markdown(section_label("TOP 30 PRIORITY INTERVENTION TARGETS"),
-                unsafe_allow_html=True)
-    st.markdown("Persuadable active subscribers ranked by Priority Score "
-                "= Churn Probability × Monthly Price.")
-
+    st.markdown(section_label("TOP 30 PRIORITY INTERVENTION TARGETS"), unsafe_allow_html=True)
+    st.markdown(
+        "Persuadable active subscribers ranked by Priority Score "
+        "= Churn Probability × Monthly Price."
+    )
     top30 = persuadables.sort_values("priority_score", ascending=False).head(30)
-    if len(top30) == 0:                  # Fallback: show all high-risk actives
+    if len(top30) == 0:
         top30 = active.sort_values("priority_score", ascending=False).head(30)
 
     disp = top30[[
@@ -254,13 +270,16 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             .reset_index()
         )
         fig_c1 = go.Figure(go.Bar(
-            x=clv_plan["Plan"], y=clv_plan["total"],
-            marker=dict(color=[PLAN_COLORS.get(p) for p in clv_plan["Plan"]],
-                        line=dict(color=F1_DGREY, width=1)),
+            x=clv_plan["Plan"],
+            y=clv_plan["total"],
+            marker=dict(
+                color=[PLAN_COLORS.get(p, F1_SILVER) for p in clv_plan["Plan"]],
+                line=dict(color=F1_DGREY, width=1),
+            ),
             text=[f"${v:,.0f}" for v in clv_plan["total"]],
             textposition="outside",
             textfont=dict(color=F1_WHITE),
-            customdata=clv_plan["avg"],
+            customdata=clv_plan["avg"].tolist(),
             hovertemplate=(
                 "<b>%{x}</b><br>Total CLV: $%{y:,.0f}<br>"
                 "Avg per sub: $%{customdata:.0f}<extra></extra>"
@@ -268,7 +287,7 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         ))
         lc1 = base_layout("Total Predicted 6-Month CLV by Plan", height=320)
         lc1["yaxis"]["title"] = "Predicted CLV (USD)"
-        lc1["yaxis"]["range"] = [0, clv_plan["total"].max() * 1.3]
+        lc1["yaxis"]["range"] = [0, float(clv_plan["total"].max()) * 1.3]
         fig_c1.update_layout(**lc1)
         st.plotly_chart(fig_c1, use_container_width=True)
 
@@ -276,13 +295,17 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         st.markdown(section_label("PREDICTED 6-MONTH CLV — BY SEGMENT"), unsafe_allow_html=True)
         clv_seg = (
             active.groupby("segment_label")["predicted_clv_6m"]
-            .mean().reset_index()
+            .mean()
+            .reset_index()
         )
         clv_seg.columns = ["segment", "avg_clv"]
         fig_c2 = go.Figure(go.Bar(
-            x=clv_seg["segment"], y=clv_seg["avg_clv"],
-            marker=dict(color=[SEGMENT_COLORS.get(s) for s in clv_seg["segment"]],
-                        line=dict(color=F1_DGREY, width=1)),
+            x=clv_seg["segment"],
+            y=clv_seg["avg_clv"],
+            marker=dict(
+                color=[SEGMENT_COLORS.get(s, F1_SILVER) for s in clv_seg["segment"]],
+                line=dict(color=F1_DGREY, width=1),
+            ),
             text=[f"${v:.0f}" for v in clv_seg["avg_clv"]],
             textposition="outside",
             textfont=dict(color=F1_WHITE),
@@ -290,7 +313,7 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
         ))
         lc2 = base_layout("Avg Predicted 6-Month CLV by Segment", height=320)
         lc2["yaxis"]["title"] = "Avg Predicted CLV (USD)"
-        lc2["yaxis"]["range"] = [0, clv_seg["avg_clv"].max() * 1.3]
+        lc2["yaxis"]["range"] = [0, float(clv_seg["avg_clv"].max()) * 1.3]
         fig_c2.update_layout(**lc2)
         st.plotly_chart(fig_c2, use_container_width=True)
 
@@ -298,15 +321,13 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
     st.markdown("---")
     st.markdown(section_label("6 STRATEGIC RECOMMENDATIONS"), unsafe_allow_html=True)
 
-    # Derived values for dynamic copy
-    pit_churn   = subs[subs["Plan"] == "Pit Lane"]["churn_flag"].mean() * 100
-    padd_churn  = subs[subs["Plan"] == "Paddock Club"]["churn_flag"].mean() * 100
-    best_ch     = subs.groupby("Acquisition Channel")["churn_flag"].mean().idxmin()
-    top_reason  = (subs[subs["Churned"] == "Yes"]["Churn Reason"]
-                   .value_counts().idxmax())
-    worst_reg   = subs.groupby("Region")["churn_flag"].mean().idxmax()
-    dormant_n   = len(df[df["segment_label"] == "Dormant"])
-    persuad_n   = len(persuadables)
+    pit_churn  = float(subs[subs["Plan"] == "Pit Lane"]["churn_flag"].mean() * 100)
+    padd_churn = float(subs[subs["Plan"] == "Paddock Club"]["churn_flag"].mean() * 100)
+    best_ch    = subs.groupby("Acquisition Channel")["churn_flag"].mean().idxmin()
+    top_reason = (subs[subs["Churned"] == "Yes"]["Churn Reason"].value_counts().idxmax())
+    worst_reg  = subs.groupby("Region")["churn_flag"].mean().idxmax()
+    dormant_n  = len(df[df["segment_label"] == "Dormant"])
+    persuad_n  = len(persuadables)
 
     rc1, rc2 = st.columns(2)
     with rc1:
@@ -314,9 +335,7 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             "<b>🏎 REC 1 — Upgrade Campaign: Pit Lane → Podium</b><br>"
             f"Pit Lane churns at {pit_churn:.1f}% vs {padd_churn:.1f}% for Paddock Club. "
             f"Offer Pit Lane Persuadables a '2 months free on Podium' trial. "
-            f"The model shows these subscribers have sufficient engagement to justify the upgrade "
-            f"and would otherwise cancel. Expected trade: short-term MRR dip, "
-            f"long-term retention gain and higher ARPU."
+            f"Expected trade: short-term MRR dip, long-term retention gain and higher ARPU."
         ), unsafe_allow_html=True)
 
         st.markdown(rec_box(
@@ -331,8 +350,7 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             f"<b>📣 REC 3 — Reallocate CAC to {best_ch}</b><br>"
             f"'{best_ch}' delivers the lowest churn rate of any acquisition channel. "
             f"Shifting 20% of Paid Ad budget to referral incentives improves LTV:CAC "
-            f"without requiring any product change — the highest-ROI, lowest-effort "
-            f"lever currently available."
+            f"without requiring any product change."
         ), unsafe_allow_html=True)
 
     with rc2:
@@ -340,9 +358,8 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             f"<b>🌍 REC 4 — Regional Pricing Pilot: {worst_reg}</b><br>"
             f"{worst_reg} shows the highest churn rate, concentrated in Pit Lane. "
             f"The #1 churn reason is '{top_reason}', which in price-sensitive markets "
-            f"often signals a value mismatch rather than a content problem. "
-            f"Test a PPP-adjusted price point — a 20% localised discount costs less than "
-            f"the MRR lost to churn at current rates."
+            f"often signals a value mismatch. Test a 20% localised discount — it costs "
+            f"less than the MRR lost to churn at current rates."
         ), unsafe_allow_html=True)
 
         st.markdown(warn_box(
@@ -350,15 +367,13 @@ def render(subs: pd.DataFrame, sess: pd.DataFrame, mrr: pd.DataFrame) -> None:
             f"{dormant_n} subscribers sit in the Dormant KMeans cluster — "
             f"low engagement, short sessions, elevated churn probability. "
             f"Launch a 'PitWall Race Week' challenge: weekly prediction contests tied to "
-            f"live race data, targeted exclusively at this segment. "
-            f"Goal: lift avg engagement above 45 before churn probability crosses 70%."
+            f"live race data, targeted exclusively at this segment."
         ), unsafe_allow_html=True)
 
         st.markdown(rec_box(
             f"<b>💡 REC 6 — Proactive Content Roadmap Communication</b><br>"
             f"'{top_reason}' is the #1 stated churn reason. Publish a quarterly content "
             f"roadmap and distribute it 2 weeks before each subscriber's renewal date. "
-            f"Subscribers who know what features are coming are less likely to cancel. "
             f"Run an A/B test on the {persuad_n} Persuadables first — "
             f"measure 30-day churn lift before full rollout."
         ), unsafe_allow_html=True)
